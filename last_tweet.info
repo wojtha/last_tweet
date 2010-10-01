@@ -1,0 +1,3 @@
+name = Last Tweet
+description = Displays last tweet from given Twitter ID. (Warning: Currently dupports only 1 account per site).
+core = 6.x

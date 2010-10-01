@@ -1,0 +1,178 @@
+<?php
+/**
+ * @file LastTweet Drupal module
+ *
+ * Simple module which displays last tweet in the block.
+ *
+ * @author Vojtech Kusy <wojtha@gmail.com>
+ * @license GNU GPL2 license
+ */
+
+
+/**
+ * Implementation of hook_block()
+ */
+function last_tweet_block($op = 'list', $delta = 0, $edit = array()) {
+  if ($op == 'list') {
+    $blocks = array();
+    $blocks[0] = array(
+      'info' => 'Latest tweet from Twitter',
+      'weight' => 0,
+      'status' => 0,
+    );
+    return $blocks;
+  }
+  elseif ($op == 'configure' && $delta == 0) {
+    $form = array();
+    $form['twitter_id'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Twitter ID'),
+      '#description' => t('Enter some existing (probably yours) Twitter ID.'),
+      '#default_value' => variable_get('last_tweet_id', ''),
+      '#required' => TRUE,
+    );
+    $form['twitter_interval'] = array(
+      '#type' => 'select',
+      '#title' => t('Twitter check interval'),
+      '#required' => TRUE,
+      '#default_value' => variable_get('last_tweet_interval', 900),
+      '#options' => array(
+        180 => '3 min',
+        300 => '5 min',
+        600 => '10 min',
+        900 => '15 min',
+        1800 => '30 min',
+        2700 => '45 min',
+        3600 => '60 min',
+      ),
+    );
+    $form['twitter_not_found'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Twitter no tweets found message'),
+      '#default_value' => variable_get('last_tweet_nothing_found_message', t('No tweets found or service is currently unavailable.')),
+      '#required' => TRUE,
+    );
+    $form['twitter_follow_text'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Twitter follow link text'),
+      '#default_value' => variable_get('last_tweet_follow_text', t('Follow me at Twitter')),
+      '#required' => TRUE,
+    );
+    $form['twitter_decorate_url'] = array(
+      '#title' => t('Make links clickable'),
+      '#type' => 'checkbox',
+      '#default_value' => variable_get('last_tweet_decorate_url', 1),
+      '#required' => TRUE,
+    );
+    $form['twitter_decorate_hashtags'] = array(
+      '#title' => t('Format #hashtags'),
+      '#type' => 'checkbox',
+      '#default_value' => variable_get('last_tweet_decorate_hashtags', 1),
+      '#required' => TRUE,
+    );
+    return $form;
+  }
+  elseif ($op == 'save' && $delta == 0) {
+    variable_set('last_tweet_id', $edit['twitter_id']);
+    variable_set('last_tweet_interval', $edit['twitter_interval']);
+    variable_set('last_tweet_notfound_message', $edit['twitter_not_found']);
+    variable_set('last_tweet_follow_text', $edit['twitter_follow_text']);
+    variable_set('last_tweet_decorate_url', $edit['twitter_decorate_url']);
+    variable_set('last_tweet_decorate_hashtags', $edit['twitter_decorate_hashtags']);
+    // reset cache
+    last_tweet_get_status($edit['twitter_id'], TRUE);
+  }
+  elseif ($op == 'view') {
+    switch($delta) {
+      case 0:
+        $block = _last_tweet_block_view();
+        break;
+    }
+    return $block;
+  }
+}
+
+/**
+ * Module helper function which process and display block
+ *
+ * @return array
+ */
+function _last_tweet_block_view() {
+  $twitter_id = variable_get('last_tweet_id', '');
+
+  if (!$twitter_id) {
+    drupal_set_message(t('No Twitter account specified. Please, go to the <a href="@url">Simple Twitter block settings</a> and fill in appropriate Twitter ID.', array('@url' => url('admin/build/block/configure/last_tweet/0'))), 'error');
+    return array();
+  }
+
+  $status = last_tweet_get_status($twitter_id);
+
+  if (!empty($status->text)) {
+    $text = check_plain($status->text);
+
+    if (variable_get('last_tweet_decorate_url', 1)) {
+      $text = preg_replace('/http:\/\/([a-zA-Z0-9_\-]+)([\.][a-zA-Z0-9_\-]+)+([\/][a-zA-Z0-9\~\(\)_\-]*)+([\.][a-zA-Z0-9\(\)_\-]+)*/', '<a href="$0">$0</a>', $text);
+    }
+    if (variable_get('last_tweet_decorate_hashtags', 1)) {
+      $text = preg_replace('/\B#\w+/', '<em class="hashtag">$0</em>', $text);
+    }
+  }
+  else {
+    $status = variable_get('last_tweet_nothing_found_message', t('No tweets found or service is currently unavailable.'));
+  }
+
+  $created = t('Posted at @date', array('@date' => format_date($status->created, 'large')));
+  $created_ago = t('Posted @ago ago', array('@ago' => format_interval(time() - $status->created)));
+  $profile_link = l(variable_get('last_tweet_follow_text', t('Follow me at Twitter')), 'http://twitter.com/'. $twitter_id);
+
+  return array(
+    'subject' => t('Last Tweet'),
+    'content' => theme('last_tweet_block', $twitter_id, $text, $created, $created_ago, $profile_link),
+  );
+}
+
+/**
+ * Implementation of hook_theme()
+ */
+function last_tweet_theme($existing, $type, $theme, $path) {
+  return array(
+    'last_tweet_block' => array(
+      'arguments' => array('twitter_id' => NULL, 'status' => NULL, 'created' => NULL, 'created_ago' => NULL, 'profile_link' => NULL),
+      'template' => 'last-tweet-block',
+    ),
+  );
+}
+
+/**
+ * Implementation of template_preprocess_HOOK()
+ */
+//function last_tweet_preprocess_last_tweet_block(&$variables) {
+//}
+
+/**
+ * Function which gets last Twitter status for given user id and parse output.
+ *
+ * @param string $userid
+ * @return object
+ *   Status object
+ */
+function last_tweet_get_status($userid, $reset = FALSE) {
+  $status = '';
+  $interval = variable_get('last_tweet_interval', 600); // 600 sec = 10 minutes
+
+  if (!$reset && ($cache = cache_get('last_tweet_status'))) {
+    $status = $cache->data;
+  }
+
+  if (!$status) {
+    $url = "http://twitter.com/statuses/user_timeline/$userid.xml?count=1";
+    $xml = simplexml_load_file($url);
+    $status = new stdClass();
+    $status->twitter_id = $userid;
+    $status->text = utf8_decode($xml->status->text);
+    $status->created = strtotime($xml->status->created_at);
+    cache_set('last_tweet_status', $status, 'cache', time() + $interval);
+  }
+
+  return $status;
+}
