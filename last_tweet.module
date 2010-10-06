@@ -165,7 +165,7 @@ function last_tweet_get_status($userid, $reset = FALSE) {
   }
 
   if (!$status) {
-    $url = "http://twitter.com/statuses/user_timeline/$userid.xml?count=1";
+    $url = "http://twitter.com/statuses/user_timeline/$userid.xml";
     $xml = simplexml_load_file($url);
     $status = new stdClass();
     $status->twitter_id = $userid;
