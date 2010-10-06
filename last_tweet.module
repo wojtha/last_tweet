@@ -107,7 +107,7 @@ function _last_tweet_block_view() {
 
   $status = last_tweet_get_status($twitter_id);
 
-  if (!empty($status->text)) {
+  if ($status && !empty($status->text)) {
     $text = check_plain($status->text);
 
     if (variable_get('last_tweet_decorate_url', 1)) {
@@ -169,7 +169,7 @@ function last_tweet_get_status($userid, $reset = FALSE) {
     $xml = simplexml_load_file($url);
     $status = new stdClass();
     $status->twitter_id = $userid;
-    $status->text = utf8_decode($xml->status->text);
+    $status->text = (string) $xml->status->text;
     $status->created = strtotime($xml->status->created_at);
     cache_set('last_tweet_status', $status, 'cache', time() + $interval);
   }
