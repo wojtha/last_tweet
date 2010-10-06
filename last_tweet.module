@@ -118,7 +118,7 @@ function _last_tweet_block_view() {
     }
   }
   else {
-    $status = variable_get('last_tweet_nothing_found_message', t('No tweets found or service is currently unavailable.'));
+    $text = variable_get('last_tweet_nothing_found_message', t('No tweets found or service is currently unavailable.'));
   }
 
   $created = t('Posted at @date', array('@date' => format_date($status->created, 'large')));
