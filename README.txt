@@ -16,7 +16,7 @@ Why this module isn't hosted on Drupal.org?
 
 Author of this module respects the rule from Drupal Standards: there should be only one
 module with given functionality hosted on Drupal.org and there is also the rule saying
-that module which is only simpliest version of some more complex module should be
+that module which is only simplier version of some more complex module should be
 abandoned.
 
 __________________________________________________________________________________________
